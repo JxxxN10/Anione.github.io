@@ -34,7 +34,7 @@ body {
   -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: rgba(0,0,0,0);
   -webkit-touch-callout: none;
 }
-.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.viewport { position: fixed; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; }
 .stage { position: absolute; left: 0; top: 0; width: 1024px; height: 768px; overflow: hidden;
   background: #9A9A9E url("img/bg.jpg") center / 1024px 768px no-repeat;
   -webkit-transform-origin: 0 0; transform-origin: 0 0; }
@@ -321,13 +321,24 @@ body {
   }
   function now() { return new Date(Date.now() + simOffset); }
 
+  /* 화면 꽉 채우기: iPad 화면 비율(4:3)과 거의 같으면(±6%) 가로·세로를 각각 맞춰 여백 0.
+     iOS 12는 실행 직후·회전 직후 크기를 늦게 알려줘서 여러 번 다시 잼 */
+  var lastFit = '';
   function fit() {
-    var vw = $('viewport').clientWidth, vh = $('viewport').clientHeight;
-    var s = Math.min(vw / 1024, vh / 768);
-    var x = Math.max(0, (vw - 1024 * s) / 2), y = Math.max(0, (vh - 768 * s) / 2);
-    var tf = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+    var vw = window.innerWidth || document.documentElement.clientWidth;
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    var key = vw + 'x' + vh;
+    if (key === lastFit) return;
+    lastFit = key;
+    var sx = vw / 1024, sy = vh / 768, tf;
+    if (Math.abs(sx / sy - 1) < 0.06) tf = 'scale(' + sx + ',' + sy + ')';
+    else {
+      var s = Math.min(sx, sy);
+      tf = 'translate(' + ((vw - 1024 * s) / 2) + 'px,' + ((vh - 768 * s) / 2) + 'px) scale(' + s + ')';
+    }
     $('stage').style.webkitTransform = tf; $('stage').style.transform = tf;
   }
+  function refitSoon() { setTimeout(fit, 100); setTimeout(fit, 500); setTimeout(fit, 1500); }
 
   function xhr(method, url, body, cb) {
     try {
@@ -1005,8 +1016,9 @@ body {
     setInterval(tick, 1000);
     setInterval(loadWeather, CONFIG.weatherEveryMs);
     setInterval(measureSpeed, CONFIG.speedEveryMs);
-    window.addEventListener('resize', fit, false);
-    window.addEventListener('orientationchange', fit, false);
+    window.addEventListener('resize', refitSoon, false);
+    window.addEventListener('orientationchange', refitSoon, false);
+    refitSoon(); setInterval(fit, 3000);
     window.addEventListener('hashchange', function () { readSim(); meal.key = ''; tick(); }, false);
     setInterval(function () { var d = now(); if (d.getHours() === 4 && d.getMinutes() === 0 && d.getSeconds() < 2) location.reload(); }, 1000);
   }
