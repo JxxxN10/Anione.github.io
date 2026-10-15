@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>문 앞 대시보드</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+/* Layout: 피그마 프레임 1024x768 좌표 그대로. 유리판은 피그마에서 내보낸 이미지, 글자·숫자·그래프만 코드로 얹음.
+   시계 x109 y214 w327 h167 / 날씨 530,30 / 조명 772,30 / 일과 530,270 / 급식 530,514 / 네트워크 30,514 */
+:root {
+  --ink: #FFFFFF;
+  --ink2: rgba(255,255,255,0.86);
+  --ink3: rgba(255,255,255,0.68);
+  --shade: 0 1px 3px rgba(0,0,0,0.22);
+  --orange: #FF8D28;
+  --orange-soft: #FFC48A;
+  --yellow: #FFD60A;
+  --font: "SD Neo", "Apple SD Gothic Neo", -apple-system, BlinkMacSystemFont, sans-serif;
+  --num: "SF Pro", "SF Pro Display", -apple-system, BlinkMacSystemFont, "SD Neo", "Apple SD Gothic Neo", sans-serif;
+  --sub: rgba(255,255,255,0.33);
+  color-scheme: light;
+}
+/* 글자 전체 = Apple SD 산돌고딕 Neo (iPad 내장 글꼴을 굵기별로 연결). 큰 숫자(시계·기온·남은 시간)만 SF Pro */
+@font-face { font-family: "SD Neo"; font-weight: 400; src: local("AppleSDGothicNeo-Regular"), local("AppleSDGothicNeoR00"); }
+@font-face { font-family: "SD Neo"; font-weight: 500; src: local("AppleSDGothicNeo-Medium"), local("AppleSDGothicNeoM00"); }
+@font-face { font-family: "SD Neo"; font-weight: 600; src: local("AppleSDGothicNeo-SemiBold"), local("AppleSDGothicNeoSB00"); }
+@font-face { font-family: "SD Neo"; font-weight: 700; src: local("AppleSDGothicNeo-Bold"), local("AppleSDGothicNeoB00"); }
+html, body { height: 100%; }
+body {
+  background: #9A9A9E; color: var(--ink); font-family: var(--font);
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: rgba(0,0,0,0);
+  -webkit-touch-callout: none;
+}
+.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.stage { position: absolute; left: 0; top: 0; width: 1024px; height: 768px; overflow: hidden;
+  background: #9A9A9E url("img/bg.jpg") center / 1024px 768px no-repeat;
+  -webkit-transform-origin: 0 0; transform-origin: 0 0; }
+
+.w { position: absolute; box-sizing: border-box; }
+.w > img.glass { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.w > .in { position: absolute; left: 0; top: 0; right: 0; bottom: 0; box-sizing: border-box; color: var(--ink); }
+/* 위젯 간격: 가로 21, 세로 18 (피그마 Spacing) */
+#wWeather { left: 530px; top: 30px; width: 222px; height: 222px; }
+#wLight   { left: 773px; top: 30px; width: 222px; height: 222px; }
+#wRoll    { left: 530px; top: 270px; width: 465px; height: 224px; }
+#wMeal    { left: 530px; top: 512px; width: 465px; height: 222px; }
+
+/* 시계: 피그마 박스 중심(x 272.5)에 맞춰 가운데 정렬. 글래스는 캔버스로 직접 계산(테두리선·그라데이션 없음) */
+.dateline { position: absolute; left: 0; width: 545px; top: 214px; line-height: 26px; text-align: center;
+  font-size: 22px; font-weight: 600; letter-spacing: -0.2px; color: rgba(255,255,255,0.75); }  /* 날짜: Medium 22 (잠금화면 정보 줄처럼 시계보다 가볍게) */
+/* 시계 캔버스: 위아래 여유를 두고 y194~404. 숫자 윗선 y256(날짜와 20px), 아랫선 y379, 콜론은 피그마 이미지 위치(230.5, 273.5) */
+.dateline .grad { opacity: 0.75; display: inline-block; vertical-align: -3px; margin: 0 4px 0 10px; }
+.clock { position: absolute; left: 0; width: 545px; top: 194px; height: 210px; }
+.clock canvas { display: block; width: 545px; height: 210px;
+  -webkit-filter: drop-shadow(0 4px 10px rgba(0,0,0,0.08)); filter: drop-shadow(0 4px 10px rgba(0,0,0,0.08)); }
+.clock-text { position: absolute; left: 0; top: 0; width: 545px; text-align: center; font-size: 174px; line-height: 210px; font-weight: 600; font-family: var(--num);
+  letter-spacing: 0; font-variant-numeric: tabular-nums; color: rgba(245,245,245,0.6); }
+.sample-chip { position: absolute; left: 0; width: 545px; top: 412px; text-align: center; }
+.sample-chip span { display: inline-block; padding: 6px 12px; border-radius: 34px; background: rgba(0,0,0,0.2); color: var(--ink2); font-size: 13px; font-weight: 600; }
+
+/* 위젯 공통 글자 */
+/* 피그마 타이포: 제목 = Semibold 20 / -0.08px / #FFF, 보조 = Medium 15 / -0.08px / #FFF 33% */
+.t-title { font-size: 20px; font-weight: 600; letter-spacing: -0.08px; color: #FFFFFF; }
+.t-sub { font-size: 15px; font-weight: 500; letter-spacing: -0.08px; color: var(--sub); }
+.head { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; font-size: 15px; font-weight: 500; color: var(--sub); letter-spacing: -0.08px; }
+.head svg { margin-right: 6px; -webkit-flex-shrink: 0; flex-shrink: 0; }
+.head .meta { margin-left: auto; }
+#wMeal .head { color: rgba(255,255,255,0.75); }   /* 밝은 유리 위에서도 읽히게 */
+.big { font-family: var(--num); font-size: 60px; font-weight: 500; line-height: 1; letter-spacing: 0.006em; font-variant-numeric: tabular-nums; }
+.mid { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
+.unit { font-size: 17px; font-weight: 600; letter-spacing: -0.43px; margin-left: 3px; }
+.cap { font-size: 15px; font-weight: 500; letter-spacing: -0.08px; color: #FFFFFF; margin-top: 4px; }
+.cap-s { font-size: 15px; font-weight: 500; letter-spacing: -0.08px; color: var(--sub); margin-top: 2px; }
+
+/* 날씨: 피그마 위젯 이미지(위치·학교명·"최고"·"최저" 글자 포함) 위에 바뀌는 값만 얹음.
+   이미지 실측(1배): 제목 x41 y30, "최고" x20~44.5, "최저" x84.5~109, 두 라벨 아랫선 y199 */
+#wWeather .in { padding: 0; }
+.wx-temp { letter-spacing: -0.045em; position: absolute; left: 20px; top: 56px; margin-left: -3px; }  /* 숫자 왼쪽 여백만큼 당겨 아래 글자와 시각적으로 왼쪽 정렬 */
+.wx-emoji { position: absolute; right: 20px; top: 62px; font-size: 40px; line-height: 1; }
+.wx-cond { position: absolute; left: 20px; top: 126px; font-size: 15px; font-weight: 500; letter-spacing: -0.08px; color: #FFFFFF; }
+.wx-hl { position: absolute; top: 182px; font-size: 17px; line-height: 20px; font-weight: 500; letter-spacing: -0.43px; color: #FFFFFF; font-variant-numeric: tabular-nums; }
+.wx-hi { left: 49px; }
+.wx-lo { left: 113px; }
+
+/* 조명: 피그마 이미지 두 장(켜짐/꺼짐)을 바꿔 끼움 + 애플식 꾹 누르기 */
+/* 누르기 애니메이션은 CSS 전환이 아니라 JS 스프링(감쇠비·응답시간)으로: 언제든 손을 떼면 현재 크기·속도에서 이어서 복귀 */
+#wLight { padding: 0; border: 0; background: none; cursor: pointer; outline: none; border-radius: 34px; will-change: transform; }
+#wLight:focus-visible { box-shadow: 0 0 0 3px rgba(255,255,255,0.9); }
+#wLight img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+#wLight .off { opacity: 0; }
+#wLight.is-off .off { opacity: 1; }
+#wLight.is-off .on { opacity: 0; }
+
+/* 다음 일과 */
+#wRoll .in { padding: 0 26px; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
+.ring { position: relative; width: 150px; height: 150px; -webkit-flex-shrink: 0; flex-shrink: 0; margin-right: 26px; }
+.ring-prog { -webkit-transition: stroke-dashoffset 600ms ease; transition: stroke-dashoffset 600ms ease; }
+.ring-mid { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
+.roll-label { font-size: 20px; font-weight: 500; letter-spacing: -0.08px; color: #FFFFFF; }
+.count { margin: 6px 0 4px; font-family: var(--num); font-size: 56px; font-weight: 500; line-height: 1; letter-spacing: 0.006em; font-variant-numeric: tabular-nums; }
+.count .cu { font-size: 22px; font-weight: 600; letter-spacing: -0.26px; }
+
+/* 급식 */
+#wMeal .in { padding: 20px 24px; }
+/* 급식: 좌우로 끌어 조식·중식·석식 넘기기 (1:1 추적, 속도 전달, 모멘텀 예측, 끝에서 고무줄 저항, 30초 뒤 원래 끼니로 복귀) */
+.meal-row { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; -webkit-align-items: center; align-items: center; margin-top: 6px; }
+.meal-title { font-size: 20px; font-weight: 600; letter-spacing: -0.08px; color: #FFFFFF; }
+.dots span { display: inline-block; width: 6px; height: 6px; border-radius: 3px; margin-left: 6px; background: rgba(255,255,255,0.33); }
+.dots span.on { background: #FFFFFF; }
+.meal-view { width: 417px; overflow: hidden; margin-top: 10px; outline: none; cursor: -webkit-grab; cursor: grab; }
+.meal-view:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,0.8); border-radius: 8px; }
+.meal-track { display: -webkit-flex; display: flex; width: 1251px; will-change: transform; }
+.meal-track .meal-grid { width: 417px; -webkit-flex-shrink: 0; flex-shrink: 0; margin: 0; box-sizing: border-box; }
+.meal-grid { padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; grid-column-gap: 18px; }
+.meal-grid li { font-size: 18px; letter-spacing: -0.44px; line-height: 38px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid rgba(255,255,255,0.3); }
+.meal-grid li .alg { margin-left: 5px; font-size: 12px; font-weight: 500; letter-spacing: 0; color: rgba(255,255,255,0.7); font-family: var(--num); }
+.meal-grid li.fav { color: var(--yellow); font-weight: 700; }
+
+/* 네트워크: 피그마 시안 크기 그대로(카드 없음) — 라벨 + 작은 그래프 */
+.net { position: absolute; left: 88px; top: 671px; width: 160px; color: #FFFFFF; }
+/* 라벨(한글, 산돌고딕)과 값(영문·숫자, SF Pro)의 글꼴 높이가 달라 가운데 정렬하면 어긋남 → 글자 기준선(baseline)으로 맞춤 */
+.net-row { display: -webkit-flex; display: flex; -webkit-align-items: baseline; align-items: baseline; font-size: 15px; line-height: 18px; white-space: nowrap; }
+.net-row svg { margin-right: 4px; -webkit-align-self: center; align-self: center; }
+.net-row b { font-weight: 700; margin-right: 10px; }
+.net-row span { font-weight: 500; }
+.spark { display: block; margin-top: 8px; }
+
+/* 귀가 카운트다운: 네트워크와 같은 크기·글꼴. 아래 막대 5칸 = 월~금, 지난 날은 채움, 오늘은 진행률만큼 */
+.home { position: absolute; left: 290px; top: 671px; width: 170px; color: #FFFFFF; }
+.home .net-row b { margin-right: 10px; }
+.days { display: -webkit-flex; display: flex; margin-top: 8px; height: 30px; -webkit-flex-direction: column; flex-direction: column; -webkit-justify-content: space-between; justify-content: space-between; }
+.day-bars { display: -webkit-flex; display: flex; }
+.day-bar { position: relative; -webkit-flex: 1; flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.33); overflow: hidden; }
+.day-bar + .day-bar { margin-left: 5px; }
+.day-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #FFFFFF; border-radius: 4px; }
+.day-labels { display: -webkit-flex; display: flex; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.33); }
+.day-labels span { -webkit-flex: 1; flex: 1; text-align: center; }
+.day-labels span.today { color: #FFFFFF; }
+
+/* 토스트 */
+.toast { position: absolute; left: 272px; top: 440px; -webkit-transform: translate(-50%, 8px); transform: translate(-50%, 8px);
+  padding: 12px 18px; border-radius: 34px; white-space: nowrap; background: rgba(28,28,30,0.85); color: #FFFFFF;
+  font-size: 15px; font-weight: 600; opacity: 0; pointer-events: none;
+  -webkit-transition: opacity 250ms ease, -webkit-transform 250ms ease; transition: opacity 250ms ease, transform 250ms ease; }
+.toast.show { opacity: 1; -webkit-transform: translate(-50%, 0); transform: translate(-50%, 0); }
+
+.clock { cursor: pointer; }
+/* 야간 모드: StandBy 야간처럼 검은 화면에 어두운 빨간 시계만. 화면 아무 곳이나 누르면 해제 */
+.night { position: absolute; left: 0; top: 0; width: 1024px; height: 768px; background: #000; z-index: 50;
+  opacity: 0; visibility: hidden; -webkit-transition: opacity 500ms ease, visibility 0s linear 500ms; transition: opacity 500ms ease, visibility 0s linear 500ms; }
+.night.on { opacity: 1; visibility: visible; -webkit-transition: opacity 500ms ease; transition: opacity 500ms ease; }
+.night-date { position: absolute; left: 0; right: 0; top: 214px; text-align: center; font-size: 26px; font-weight: 600; letter-spacing: -0.3px; color: rgba(255,59,48,0.55); }
+.night-wake { position: absolute; left: 0; right: 0; top: 512px; text-align: center; font-size: 20px; font-weight: 500; letter-spacing: -0.2px; color: rgba(255,59,48,0.5); }
+.night-wake b { font-family: var(--num); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 6px; }
+.night-time { position: absolute; left: 0; right: 0; top: 256px; text-align: center; font-family: var(--num); font-size: 236px; line-height: 236px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: rgba(255,59,48,0.7); }
+
+@media (prefers-reduced-motion: reduce) {
+  .night { -webkit-transition: none; transition: none; }
+  .ring-prog, .toast { -webkit-transition: none; transition: none; }
+}
+</style>
+<style>html,body{margin:0}</style>
+</head>
+<body>
+
+
+<div class="viewport" id="viewport">
+  <div class="stage" id="stage">
+
+    <div class="dateline" id="date" aria-label="날짜와 졸업까지 남은 날"><span id="dateTxt">16일 (금)</span><img class="grad" src="img/grad.png" width="20" height="18" alt="졸업까지"><span id="gradTxt">123일</span></div>
+    <div class="clock" id="clock" role="img" aria-label="9:41">
+      <div class="clock-text" id="clockText" aria-hidden="true">9:41</div>
+      <canvas id="clockCanvas" width="1090" height="420" aria-hidden="true"></canvas>
+    </div>
+    <div class="sample-chip" id="sampleChip" hidden><span>예시 데이터</span></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="night" id="night" role="button" aria-label="야간 모드, 누르면 해제">
+      <div class="night-date" id="nightDate"></div>
+      <div class="night-time" id="nightTime"></div>
+      <div class="night-wake" id="nightWake"></div>
+    </div>
+
+    <section class="w" id="wWeather" aria-label="날씨, 애니원고등학교">
+      <img class="glass" src="img/w-weather.png" alt="">
+      <div class="in">
+        <div class="wx-temp big" id="outTemp">14°</div>
+        <div class="wx-cond" id="outSky">흐림 · 강수 60%</div>
+        <span class="wx-hl wx-hi" id="outHi">18°</span>
+        <span class="wx-hl wx-lo" id="outLo">9°</span>
+      </div>
+    </section>
+
+    <button type="button" class="w" id="wLight" aria-label="방 조명 끄기, 길게 누르기">
+      <img class="on" src="img/w-light-on.png" alt="">
+      <img class="off" src="img/w-light-off.png" alt="">
+    </button>
+
+    <section class="w" id="wRoll" aria-label="다음 일과">
+      <img class="glass" src="img/w-roll.png" alt="">
+      <div class="in">
+        <div class="ring">
+          <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
+            <circle cx="75" cy="75" r="64" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="16"></circle>
+            <circle class="ring-prog" id="ringProg" cx="75" cy="75" r="64" fill="none" stroke="#FF8D28" stroke-width="16" stroke-linecap="round" stroke-dasharray="402.12" stroke-dashoffset="201" transform="rotate(-90 75 75)"></circle>
+          </svg>
+          <div class="ring-mid" aria-hidden="true"><img src="img/alarm.png" width="34" height="38" alt=""></div>
+        </div>
+        <div>
+          <div class="roll-label" id="nextLabel">야간점호 22:30</div>
+          <div class="count" id="count">50:12</div>
+          <div class="cap" id="countSub">남음</div>
+          <div class="cap-s" id="afterNext" style="margin-top:6px; color: rgba(255,255,255,0.75)">그다음 · 취침 23:30</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="w" id="wMeal" aria-label="급식">
+      <img class="glass" src="img/w-meal.png" alt="">
+      <div class="in">
+        <div class="head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2v20"></path><path d="M4 2v6a3 3 0 0 0 6 0V2"></path><path d="M17 22V2c-2.5 1-4 4-4 8h4"></path></svg><span id="mealWhen">10/16 금 · 07:00</span><span class="meta" id="mealKcal"></span></div>
+        <div class="meal-row"><div class="meal-title" id="mealTitle">오늘 조식</div><div class="dots" id="mealDots" aria-hidden="true"><span class="on"></span><span></span><span></span></div></div>
+        <div class="meal-view" id="mealView" tabindex="0" aria-label="급식, 좌우로 넘겨 다른 끼니 보기">
+          <div class="meal-track" id="mealTrack"><ul class="meal-grid"></ul><ul class="meal-grid"></ul><ul class="meal-grid"></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="net" aria-label="네트워크">
+      <div class="net-row">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M4 4a16 16 0 0 1 16 16"></path><path d="M4 11a9 9 0 0 1 9 9"></path><circle cx="5" cy="19" r="1.6" fill="currentColor"></circle></svg>
+        <b>네트워크</b><span id="netVal">52</span><span>&nbsp;Mbps</span>
+      </div>
+      <svg class="spark" width="157" height="30" viewBox="0 0 157 30" aria-hidden="true">
+        <defs>
+          <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"></stop>
+            <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"></stop>
+          </linearGradient>
+          <clipPath id="sparkClip"><rect x="0" y="0" width="157" height="30"></rect></clipPath>
+        </defs>
+        <g clip-path="url(#sparkClip)"><g id="sparkMove">
+          <path id="sparkArea" fill="url(#sparkFill)" d=""></path>
+          <path id="sparkLine" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" d=""></path>
+        </g></g>
+        <line x1="1" y1="28.5" x2="156" y2="28.5" stroke="#FFFFFF" stroke-width="1.6" stroke-dasharray="4 3"></line>
+      </svg>
+    </div>
+    <div class="home" aria-label="귀가까지">
+      <div class="net-row">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3 2 11.5h3V21h5v-6h4v6h5v-9.5h3z"></path></svg>
+        <b id="homeLabel">귀가</b><span id="homeVal">1일 16시간</span>
+      </div>
+      <div class="days">
+        <div class="day-bars" id="dayBars"><div class="day-bar"><i></i></div><div class="day-bar"><i></i></div><div class="day-bar"><i></i></div><div class="day-bar"><i></i></div><div class="day-bar"><i></i></div></div>
+        <div class="day-labels" id="dayLabels"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* iOS 12 Safari 호환: ES5만 사용 */
+(function () {
+  'use strict';
+
+  /* api: 닷홈 PHP 중계 주소. 비면 예시 데이터.
+       GET  {api}/weather.php -> {"temp":14,"sky":"흐림","pop":60,"hi":18,"lo":9}
+       GET  {api}/meal.php?ymd=YYYYMMDD&code=1|2|3 -> NEIS 원본 JSON
+       GET  {api}/speed.bin   -> 약 1MB 파일
+       POST {api}/command.php  cmd=light_off|light_on */
+  var CONFIG = {
+    api: 'api',      /* 닷홈 html/api 폴더의 PHP (같은 사이트라 상대 주소) */
+    light: false,    /* ESP32 조명 연결 전까지 false: 길게 누르면 데모 안내만 */
+    lat: 35.580, lon: 129.306,   /* 울산애니원고 부근: PHP가 막힐 때 브라우저가 직접 날씨를 받는 예비 경로용 */
+    gradAt: { y: 2027, m: 2, d: 16 },   /* 졸업일: 화면에 남은 날을 -123처럼 표시 */
+    hour12: false,   /* 24시간제: 새벽 01:11, 오후 13:11 */
+    favorites: ['치킨', '돈까스', '떡볶이', '피자', '스파게티', '마라'],
+    homeAt: { day: 5, h: 16, m: 30 },   // 금요일 귀가 시각 (오후 4:30)
+    backAt: { day: 0, h: 20, m: 30 },   // 일요일 기숙사 복귀 시각 (저녁 8:30까지)
+    speedBytes: 1048576,
+    weatherEveryMs: 10 * 60 * 1000,
+    speedEveryMs: 15 * 60 * 1000
+  };
+
+  var SCHEDULE = [
+    { t: 6 * 60 + 40,  name: '기상' },
+    { t: 7 * 60,       name: '일조점호' },
+    { t: 8 * 60 + 30,  name: '등교' },
+    { t: 17 * 60,      name: '저녁식사' },
+    { t: 18 * 60,      name: '전공심화반' },
+    { t: 20 * 60 + 50, name: '자율학습 종료' },
+    { t: 22 * 60 + 30, name: '야간점호' },
+    { t: 23 * 60 + 30, name: '취침' }
+  ];
+  var DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  var RING_C = 402.12;
+  var SAMPLE = {
+    weather: { temp: 14, sky: '흐림', pop: 60, hi: 18, lo: 9 },
+    speeds: [48, 51, 47, 55, 60, 52, 44, 39, 46, 58, 61, 57, 50, 49, 53, 56, 52, 47, 50, 54, 59, 55, 51, 52, 57, 62, 58, 54, 50, 53],
+    meals: {
+      1: { dishes: ['현미밥', '미역국', '계란말이', '김구이', '배추김치', '요구르트'], alg: ['', '5.6', '1.5', '', '9', '2'], kcal: 612 },
+      2: { dishes: ['잡곡밥', '돈육김치찌개', '치킨', '숙주나물', '깍두기', '귤'], alg: ['', '5.9.10', '5.6.15', '', '9', ''], kcal: 845 },
+      3: { dishes: ['흑미밥', '어묵국', '제육볶음', '상추쌈', '배추김치', '식혜'], alg: ['', '1.5.6', '5.6.10.13', '', '9', ''], kcal: 790 }
+    }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  var simOffset = 0;
+  function readSim() {
+    var m = /^#t(\d{2})(\d{2})$/.exec(location.hash || '');
+    if (!m) { simOffset = 0; return; }
+    var real = new Date();
+    simOffset = new Date(real.getFullYear(), real.getMonth(), real.getDate(), +m[1], +m[2], 0).getTime() - real.getTime();
+  }
+  function now() { return new Date(Date.now() + simOffset); }
+
+  function fit() {
+    var vw = $('viewport').clientWidth, vh = $('viewport').clientHeight;
+    var s = Math.min(vw / 1024, vh / 768);
+    var x = Math.max(0, (vw - 1024 * s) / 2), y = Math.max(0, (vh - 768 * s) / 2);
+    var tf = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+    $('stage').style.webkitTransform = tf; $('stage').style.transform = tf;
+  }
+
+  function xhr(method, url, body, cb) {
+    try {
+      var r = new XMLHttpRequest();
+      r.open(method, url, true);
+      r.timeout = 15000;
+      if (body) r.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+      r.onload = function () { if (r.status >= 200 && r.status < 300) cb(null, r.responseText); else cb(new Error('HTTP ' + r.status)); };
+      r.onerror = function () { cb(new Error('network')); };
+      r.ontimeout = function () { cb(new Error('timeout')); };
+      r.send(body || null);
+    } catch (e) { cb(e); }
+  }
+  function getJSON(path, cb) {
+    if (!CONFIG.api) { cb(new Error('no-api')); return; }
+    xhr('GET', CONFIG.api + path, null, function (err, text) {
+      if (err) { cb(err); return; }
+      try { cb(null, JSON.parse(text)); } catch (e) { cb(e); }
+    });
+  }
+  function markSample() { $('sampleChip').hidden = false; }
+
+  /* ---------- 글래스 시계 (캔버스) ----------
+     피그마 값: Glass(Light -45° 90% / Refraction 100 / Depth 16 / Frost 12 / Splay 6) + Fill(F5F5F5 35%)
+     글자 모양 안쪽에서 배경을 블러(Frost)하고, 가장자리 기울기만큼 휘어 샘플링(Refraction),
+     왼쪽 위 방향 가장자리를 밝게(Light). 테두리선·그라데이션 채움 없음. 분이 바뀔 때만 다시 계산. */
+  var GW = 1090, GH = 420, CANVAS_TOP = 194, glassText = '', bgR = null, bgG = null, bgB = null, glassFont = '', colonImg = null;
+  /* 시계 타이포 (2배 좌표, 캔버스 기준)
+     - SF Pro Bold 347px(=173.5pt). 애플 SF Pro 자간표: 80pt 이상은 자간 0
+     - 애플 원칙대로 숫자는 고정폭(탭룰러): 모든 숫자가 같은 칸 너비를 쓰고 칸 가운데에 놓여 분이 바뀌어도 흔들리지 않음
+     - 숫자 아랫선 370(=y379), 콜론은 피그마 이미지 그대로(52x176, 세로 위치 고정)
+     - "시:분" 전체 묶음을 시계 박스 가운데(x 272.5 → 캔버스 545)에 정렬 */
+  var CLK = { weight: 600, sx: 1, size: 312, base: 358, track: 0, colonY: 168, colonW: 47, colonH: 158, colonPad: 22, center: 545 };
+  var inkCache = {}, cellW = 0;
+  function inkOf(ch) {
+    if (inkCache[ch]) return inkCache[ch];
+    var c = document.createElement('canvas'); c.width = 400; c.height = 420;
+    var x = c.getContext('2d'); x.font = glassFont; x.fillStyle = '#000'; x.textBaseline = 'alphabetic';
+    x.fillText(ch, 100, CLK.base);
+    var d = x.getImageData(0, 0, 400, 420).data, minX = 9999, maxX = -1, px, py;
+    for (py = 0; py < 420; py += 2) for (px = 0; px < 400; px++) { if (d[(py * 400 + px) * 4 + 3] > 100) { if (px < minX) minX = px; if (px > maxX) maxX = px; } }
+    var m = { lsb: minX - 100, w: maxX - minX + 1, adv: x.measureText(ch).width };
+    inkCache[ch] = m; return m;
+  }
+  function tabCell() {
+    if (cellW) return cellW;
+    var w = 0;
+    for (var i = 0; i < 10; i++) w = Math.max(w, inkOf('' + i).adv);
+    cellW = w; return w;
+  }
+  /* 글자 사이 간격을 모두 같게: 숫자 모양(잉크) 사이 빈 공간을 일정하게(GAP) 두고 배치.
+     콜론도 같은 간격. 전체 묶음은 눈에 보이는 양 끝 기준 가운데 정렬 */
+  var GAP = 18;   /* 숫자 사이 잉크 간격(@2x): 기본 폭 그대로, 자간만 살짝 좁힘 */   /* 2배 좌표 26 = 화면 13px */
+  /* 압축: SF Pro 폭 축(wdth)을 iOS 12 캔버스에서 쓸 수 없어서 숫자만 가로 90%로 그림(CLK.sx). 콜론 점은 원형 유지 */
+  function drawDigits(cx, txt) {
+    var seq = txt.split(''), i, total = 0, ws = [], sx = CLK.sx, gap = GAP * sx;
+    for (i = 0; i < seq.length; i++) { ws[i] = seq[i] === ':' ? CLK.colonW : inkOf(seq[i]).w * sx; total += ws[i]; }
+    total += gap * (seq.length - 1);
+    var x = CLK.center - total / 2;
+    for (i = 0; i < seq.length; i++) {
+      if (seq[i] === ':') { if (colonImg) cx.drawImage(colonImg, x, CLK.colonY, CLK.colonW, CLK.colonH); }
+      else { cx.save(); cx.translate(x, 0); cx.scale(sx, 1); cx.fillText(seq[i], -inkOf(seq[i]).lsb, CLK.base); cx.restore(); }
+      x += ws[i] + gap;
+    }
+  }
+  function boxBlur(src, w, h, r) {
+    var tmp = new Float32Array(w * h), out = new Float32Array(w * h), x, y, sum, i, k = 1 / (2 * r + 1);
+    for (y = 0; y < h; y++) {
+      var row = y * w; sum = 0;
+      for (i = -r; i <= r; i++) sum += src[row + Math.min(w - 1, Math.max(0, i))];
+      for (x = 0; x < w; x++) {
+        tmp[row + x] = sum * k;
+        sum += src[row + Math.min(w - 1, x + r + 1)] - src[row + Math.max(0, x - r)];
+      }
+    }
+    for (x = 0; x < w; x++) {
+      sum = 0;
+      for (i = -r; i <= r; i++) sum += tmp[Math.min(h - 1, Math.max(0, i)) * w + x];
+      for (y = 0; y < h; y++) {
+        out[y * w + x] = sum * k;
+        sum += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+      }
+    }
+    return out;
+  }
+  function prepBg(img) {
+    try {
+      var c = document.createElement('canvas'); c.width = GW; c.height = GH;
+      var cx = c.getContext('2d');
+      var sx = img.naturalWidth / 2048;
+      cx.drawImage(img, 0, CANVAS_TOP * 2 * sx, GW * sx, GH * sx, 0, 0, GW, GH);
+      var d = cx.getImageData(0, 0, GW, GH).data, n = GW * GH;
+      var r = new Float32Array(n), g = new Float32Array(n), b = new Float32Array(n);
+      for (var i = 0; i < n; i++) { r[i] = d[i * 4]; g[i] = d[i * 4 + 1]; b[i] = d[i * 4 + 2]; }
+      bgR = boxBlur(boxBlur(r, GW, GH, 12), GW, GH, 12);
+      bgG = boxBlur(boxBlur(g, GW, GH, 12), GW, GH, 12);
+      bgB = boxBlur(boxBlur(b, GW, GH, 12), GW, GH, 12);
+    } catch (e) { bgR = null; }
+  }
+  function drawGlassClock() {
+    var canvas = $('clockCanvas'), text = $('clockText');
+    if (!bgR || !glassText) { canvas.style.visibility = 'hidden'; text.style.visibility = 'visible'; return; }
+    try {
+      var cx = canvas.getContext('2d');
+      cx.clearRect(0, 0, GW, GH);
+      cx.font = glassFont;
+      cx.textAlign = 'left';
+      cx.textBaseline = 'alphabetic';
+      cx.fillStyle = '#FFFFFF';
+      drawDigits(cx, glassText);
+      var src = cx.getImageData(0, 0, GW, GH), sd = src.data, n = GW * GH, i;
+      var a = new Float32Array(n);
+      for (i = 0; i < n; i++) a[i] = sd[i * 4 + 3] / 255;
+      var bm = boxBlur(boxBlur(a, GW, GH, 2), GW, GH, 2);   /* 가장자리 경사 폭: 얇은 유리 */
+      var out = cx.createImageData(GW, GH), od = out.data;
+      var S = 9, K = 10, x, y;
+      for (y = 1; y < GH - 1; y++) {
+        for (x = 1; x < GW - 1; x++) {
+          i = y * GW + x;
+          if (a[i] <= 0) continue;
+          var gx = (bm[i + 1] - bm[i - 1]) * 0.5 * S;
+          var gy = (bm[i + GW] - bm[i - GW]) * 0.5 * S;
+          var px = Math.round(x + gx * K), py = Math.round(y + gy * K);
+          if (px < 0) px = 0; else if (px > GW - 1) px = GW - 1;
+          if (py < 0) py = 0; else if (py > GH - 1) py = GH - 1;
+          var j = py * GW + px;
+          /* 분산: 채널마다 굴절 거리를 달리해 가장자리에 파랑·노랑·빨강이 아주 약하게 갈라짐 */
+          var pxr = Math.round(x + gx * K * 0.8), pyr = Math.round(y + gy * K * 0.8);
+          var pxb = Math.round(x + gx * K * 1.25), pyb = Math.round(y + gy * K * 1.25);
+          if (pxr < 0) pxr = 0; else if (pxr > GW - 1) pxr = GW - 1;
+          if (pyr < 0) pyr = 0; else if (pyr > GH - 1) pyr = GH - 1;
+          if (pxb < 0) pxb = 0; else if (pxb > GW - 1) pxb = GW - 1;
+          if (pyb < 0) pyb = 0; else if (pyb > GH - 1) pyb = GH - 1;
+          var jr = pyr * GW + pxr, jb = pyb * GW + pxb;
+          var l = (gx + gy) * 0.7071;
+          var m = Math.min(1, Math.sqrt(gx * gx + gy * gy));
+          var hl = l > 0 ? Math.pow(Math.min(1, l), 2.0) * 60 : 0;
+          var sh = l < 0 ? Math.pow(Math.min(1, -l), 1.5) * 8 : 0;
+          var add = hl - sh + 4;
+          /* 테두리 색: 빛 받는 쪽(왼위) 노랑, 반대쪽(오른아래) 파랑, 옆면은 붉은 기 */
+          var ny = gy, nx = gx, rim = m * m;
+          var cr = rim * (4 * Math.max(0, -nx) + 3 * Math.max(0, ny));
+          var cg = rim * (5 * Math.max(0, -nx - ny));
+          var cb = rim * (10 * Math.max(0, nx + ny) - 4 * Math.max(0, -nx - ny));
+          var o = i * 4;
+          /* 거의 배경 그대로(투명), 색은 중립 흰 유리. 파란 기는 B +3 정도로만 */
+          od[o]     = bgR[jr] * 0.88 + 32 + add + cr;
+          od[o + 1] = bgG[j]  * 0.88 + 33 + add + cg;
+          od[o + 2] = bgB[jb] * 0.88 + 36 + add + cb;
+          od[o + 3] = a[i] * 255;
+        }
+      }
+      cx.putImageData(out, 0, 0);
+      canvas.style.visibility = 'visible';
+      text.style.visibility = 'hidden';
+    } catch (e) {
+      canvas.style.visibility = 'hidden'; text.style.visibility = 'visible';
+    }
+  }
+  function initGlass() {
+    glassFont = CLK.weight + ' ' + CLK.size + 'px "SF Pro", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif';
+    var col = new Image();
+    col.onload = function () { colonImg = col; drawGlassClock(); };
+    col.src = 'img/colon.png';
+    var img = new Image();
+    img.onload = function () { prepBg(img); drawGlassClock(); };
+    img.src = 'img/bg.jpg';
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { inkCache = {}; cellW = 0; drawGlassClock(); });
+  }
+
+  /* 시계 · 일과 */
+  function hhmm(t) { return pad(Math.floor((t % 1440) / 60)) + ':' + pad(t % 60); }
+  function renderClock(d) {
+    var h = d.getHours();
+    var hs = CONFIG.hour12 ? ((h % 12) || 12) : pad(h);
+    var txt = hs + ':' + pad(d.getMinutes());
+    if (txt !== glassText) { glassText = txt; $('clock').setAttribute('aria-label', txt); $('clockText').textContent = txt; drawGlassClock(); }
+    var today = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var g = CONFIG.gradAt, left = Math.round((new Date(g.y, g.m - 1, g.d) - today) / 86400000);
+    $('dateTxt').textContent = d.getDate() + '일 (' + DAYS[d.getDay()] + ')';
+    $('nightDate').textContent = d.getDate() + '일 (' + DAYS[d.getDay()] + ')';
+    $('nightTime').textContent = txt;
+    /* 일과 위젯과 같은 방식(남은 초를 분 단위로 올림)으로 계산해 두 숫자가 1분 어긋나지 않게 */
+    var nowS = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    var leftM = Math.ceil(((6 * 3600 + 40 * 60 - nowS + 86400) % 86400) / 60);
+    $('nightWake').innerHTML = '기상까지<b>' + Math.floor(leftM / 60) + ':' + pad(leftM % 60) + '</b>';
+    $('gradTxt').textContent = left > 0 ? left + '일' : (left === 0 ? '졸업' : '졸업 ' + (-left) + '일째');
+    renderHome(d);
+
+    var w = d.getDay();
+    if (w === 0 || w === 6) {
+      $('nextLabel').textContent = '주말';
+      $('count').textContent = '귀가';
+      $('countSub').textContent = '평일 일과 없음';
+      $('afterNext').textContent = '';
+      $('ringProg').setAttribute('stroke-dashoffset', RING_C);
+      return;
+    }
+    var secs = h * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    var i = 0;
+    while (i < SCHEDULE.length && SCHEDULE[i].t * 60 <= secs) i++;
+    var ev, prevT;
+    if (i < SCHEDULE.length) { ev = SCHEDULE[i]; prevT = i === 0 ? SCHEDULE[SCHEDULE.length - 1].t - 1440 : SCHEDULE[i - 1].t; }
+    else { ev = { t: SCHEDULE[0].t + 1440, name: SCHEDULE[0].name }; prevT = SCHEDULE[SCHEDULE.length - 1].t; }
+    var after = SCHEDULE[(i + 1) % SCHEDULE.length];
+    var remain = ev.t * 60 - secs;
+    var frac = Math.max(0, Math.min(1, remain / ((ev.t - prevT) * 60)));
+    $('nextLabel').textContent = ev.name + ' ' + hhmm(ev.t);
+    var rm = Math.ceil(remain / 60);   /* 시:분 (예 1:05, 0:43) */
+    $('count').textContent = Math.floor(rm / 60) + ':' + pad(rm % 60);
+    $('countSub').textContent = '남음';
+    $('afterNext').textContent = '다음 · ' + after.name + ' ' + hhmm(after.t);
+    $('ringProg').setAttribute('stroke-dashoffset', (RING_C * (1 - frac)).toFixed(1));
+  }
+
+  /* 귀가 카운트다운 */
+  function nextAt(d, spec) {
+    var t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), spec.h, spec.m, 0);
+    var add = (spec.day - d.getDay() + 7) % 7;
+    t.setDate(t.getDate() + add);
+    if (t <= d) t.setDate(t.getDate() + 7);
+    return t;
+  }
+  function fmtLeft(ms) {
+    var mins = Math.ceil(ms / 60000), dd = Math.floor(mins / 1440), hh = Math.floor((mins % 1440) / 60), mm = mins % 60;
+    if (dd > 0) return dd + '일 ' + hh + '시간';
+    if (hh > 0) return hh + '시간 ' + mm + '분';
+    return mm + '분';
+  }
+  function renderHome(d) {
+    var home = nextAt(d, CONFIG.homeAt), back = nextAt(d, CONFIG.backAt);
+    var atHome = back < home;   /* 다음 복귀가 다음 귀가보다 먼저 = 지금 집 */
+    $('homeLabel').textContent = atHome ? '복귀' : '귀가';
+    $('homeVal').textContent = fmtLeft((atHome ? back : home) - d);
+    var bars = $('dayBars').getElementsByTagName('i'), labels = $('dayLabels').getElementsByTagName('span');
+    var wd = d.getDay(), dayStart = 6 * 60 + 40, dayEnd = CONFIG.homeAt.h * 60 + CONFIG.homeAt.m;
+    var mins = d.getHours() * 60 + d.getMinutes();
+    for (var k = 0; k < 5; k++) {
+      var dayNum = k + 1, w;
+      if (wd === 0 || wd === 6 || dayNum < wd) w = (wd === 0 || wd === 6) ? 1 : 1;
+      else if (dayNum > wd) w = 0;
+      else w = Math.max(0, Math.min(1, (mins - dayStart) / (24 * 60 - dayStart)));
+      if (dayNum === 5 && wd === 5) w = Math.max(0, Math.min(1, (mins - dayStart) / (dayEnd - dayStart)));
+      bars[k].style.width = (w * 100).toFixed(1) + '%';
+      labels[k].className = dayNum === wd ? 'today' : '';
+    }
+  }
+
+  /* 급식 */
+  var MEAL_LABEL = { 1: '조식', 2: '중식', 3: '석식' }, MEAL_AT = { 1: '07:00', 2: '12:20', 3: '17:00' };
+  function getMealTarget(d) {
+    var mins = d.getHours() * 60 + d.getMinutes();
+    var day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var code;
+    if (mins < 7 * 60 + 30) code = 1;
+    else if (mins < 12 * 60) code = 2;
+    else if (mins < 17 * 60 + 20) code = 3;
+    else { code = 1; day.setDate(day.getDate() + 1); }
+    var w = day.getDay();
+    if (w === 6 || w === 0) { day.setDate(day.getDate() + (w === 6 ? 2 : 1)); code = 1; }
+    var today = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var diff = Math.round((day - today) / 86400000);
+    return {
+      ymd: '' + day.getFullYear() + pad(day.getMonth() + 1) + pad(day.getDate()),
+      code: code,
+      prefix: diff === 0 ? '오늘' : diff === 1 ? '내일' : DAYS[day.getDay()] + '요일',
+      dateText: (day.getMonth() + 1) + '/' + day.getDate() + ' ' + DAYS[day.getDay()]
+    };
+  }
+  /* NEIS 메뉴 "제육볶음 (5.6.10.13.)" -> 이름 "제육볶음", 알레르기 "5.6.10.13" */
+  function splitDish(s) {
+    var alg = '', m = s.match(/\(([\d.\s]+)\)/) || s.match(/\s([\d.]+)$/);
+    if (m) alg = m[1].replace(/\s/g, '').replace(/^\.+|\.+$/g, '');
+    var name = s.replace(/\([\d.\s]*\)/g, '').replace(/[\d.]+$/g, '').replace(/\s+/g, ' ').trim();
+    return { name: name, alg: alg };
+  }
+  function parseDishes(raw) {
+    var out = { dishes: [], alg: [] };
+    String(raw).split(/<br\s*\/?>/i).forEach(function (s) {
+      var d = splitDish(s);
+      if (d.name) { out.dishes.push(d.name); out.alg.push(d.alg); }
+    });
+    return out;
+  }
+  function mk(p, kcal) { return { dishes: p.dishes, alg: p.alg, kcal: parseFloat(kcal) || null }; }
+  function extract(json) {
+    if (json && json.dishes) return mk(parseDishes(json.dishes), json.kcal);
+    try {
+      var row = json.mealServiceDietInfo[1].row[0];
+      return mk(parseDishes(row.DDISH_NM), row.CAL_INFO);
+    } catch (e) { return null; }
+  }
+  function isFav(name) {
+    for (var i = 0; i < CONFIG.favorites.length; i++) if (name.indexOf(CONFIG.favorites[i]) !== -1) return true;
+    return false;
+  }
+  var meal = { ymd: '', prefix: '', dateText: '', defIdx: 0, idx: 0, data: [null, null, null], key: '', lastTouch: 0 };
+  function pageUl(i) { return $('mealTrack').getElementsByTagName('ul')[i]; }
+  function renderMenu(i, m) {
+    meal.data[i] = m;
+    var ul = pageUl(i);
+    ul.innerHTML = '';
+    if (!m || !m.dishes.length) {
+      var li = document.createElement('li');
+      li.textContent = '등록된 메뉴가 없어요';
+      ul.appendChild(li);
+    } else {
+      for (var k = 0; k < m.dishes.length && k < 6; k++) {
+        var el = document.createElement('li');
+        var fav = isFav(m.dishes[k]);
+        el.textContent = (fav ? '★ ' : '') + m.dishes[k];
+        var alg = m.alg && m.alg[k];
+        if (alg) { var sp = document.createElement('span'); sp.className = 'alg'; sp.textContent = alg; el.appendChild(sp); }
+        if (fav) el.className = 'fav';
+        ul.appendChild(el);
+      }
+    }
+    if (i === meal.idx) renderMealHead();
+  }
+  function renderMealHead() {
+    var code = meal.idx + 1, m = meal.data[meal.idx];
+    $('mealTitle').textContent = meal.prefix + ' ' + MEAL_LABEL[code];
+    $('mealWhen').textContent = meal.dateText + ' · ' + MEAL_AT[code];
+    $('mealKcal').textContent = m && m.kcal ? Math.round(m.kcal) + ' kcal' : '';
+    var dots = $('mealDots').getElementsByTagName('span');
+    for (var i = 0; i < 3; i++) dots[i].className = i === meal.idx ? 'on' : '';
+  }
+  function loadMealDay(ymd) {
+    for (var c = 1; c <= 3; c++) (function (code) {
+      getJSON('/meal.php?ymd=' + ymd + '&code=' + code, function (err, json) {
+        if (ymd !== meal.ymd) return;
+        if (err) { markSample(); renderMenu(code - 1, SAMPLE.meals[code]); return; }
+        renderMenu(code - 1, extract(json));
+      });
+    })(c);
+  }
+  function updateMeal(d) {
+    var t = getMealTarget(d), key = t.ymd + '-' + t.code;
+    if (key !== meal.key) {
+      meal.key = key; meal.prefix = t.prefix; meal.dateText = t.dateText; meal.defIdx = t.code - 1;
+      if (t.ymd !== meal.ymd) { meal.ymd = t.ymd; meal.data = [null, null, null]; loadMealDay(t.ymd); }
+      if (!pager.drag) goPage(meal.defIdx, 0, true);
+    }
+    /* 30초 동안 손대지 않으면 지금 시간대 끼니로 돌아감 */
+    if (!pager.drag && meal.idx !== meal.defIdx && Date.now() - meal.lastTouch > 30000) goPage(meal.defIdx, 0, false);
+  }
+
+  /* 급식 넘기기: 스프링 + 제스처 */
+  var PAGE_W = 417;
+  var pager = { x: 0, v: 0, target: 0, damping: 1, response: 0.35, running: false, last: 0, drag: null, hist: [] };
+  function applyTrack(x) { var tf = 'translate3d(' + x.toFixed(2) + 'px,0,0)', st = $('mealTrack').style; st.webkitTransform = tf; st.transform = tf; }
+  function stepPager(t) {
+    if (pager.drag) { pager.running = false; return; }
+    if (!pager.last) pager.last = t;
+    var dt = Math.min(0.064, (t - pager.last) / 1000); pager.last = t;
+    var k = Math.pow(2 * Math.PI / pager.response, 2), c = 4 * Math.PI * pager.damping / pager.response;
+    for (var i = 0; i < 4; i++) { var a = -k * (pager.x - pager.target) - c * pager.v; pager.v += a * dt / 4; pager.x += pager.v * dt / 4; }
+    applyTrack(pager.x);
+    if (Math.abs(pager.v) > 0.5 || Math.abs(pager.x - pager.target) > 0.3) requestAnimationFrame(stepPager);
+    else { pager.running = false; pager.x = pager.target; pager.v = 0; applyTrack(pager.x); }
+  }
+  function goPage(i, velocity, instant) {
+    meal.idx = Math.max(0, Math.min(2, i));
+    renderMealHead();
+    pager.target = -meal.idx * PAGE_W;
+    if (instant || reduceMotion) { pager.x = pager.target; pager.v = 0; applyTrack(pager.x); return; }
+    pager.damping = velocity ? 0.8 : 1; pager.response = 0.35;   /* 던진 경우에만 살짝 바운스 */
+    if (velocity) pager.v = velocity;
+    if (!pager.running) { pager.running = true; pager.last = 0; requestAnimationFrame(stepPager); }
+  }
+  function rubberband(over, dim) { var k = 0.55; return (over * dim * k) / (dim + k * Math.abs(over)); }
+  function project(v, rate) { return (v / 1000) * rate / (1 - rate); }
+  function mealDown(e) {
+    var p = pointOf(e);
+    pager.drag = { x0: p.x, y0: p.y, startX: pager.x, active: false, dead: false, startIdx: meal.idx };
+    pager.hist = [{ x: p.x, t: Date.now() }];
+    meal.lastTouch = Date.now();
+  }
+  function mealMove(e) {
+    var g = pager.drag; if (!g || g.dead) return;
+    var p = pointOf(e), dx = p.x - g.x0, dy = p.y - g.y0;
+    if (!g.active) {
+      if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) { g.active = true; g.x0 = p.x; g.startX = pager.x; }
+      else if (Math.abs(dy) > 10) { g.dead = true; return; }
+      else return;
+    }
+    if (e.cancelable) e.preventDefault();
+    var raw = g.startX + (p.x - g.x0), min = -2 * PAGE_W, x = raw;
+    if (raw > 0) x = rubberband(raw, PAGE_W);
+    else if (raw < min) x = min - rubberband(min - raw, PAGE_W);
+    pager.x = x; applyTrack(x);
+    var now2 = Date.now();
+    pager.hist.push({ x: p.x, t: now2 });
+    while (pager.hist.length > 2 && now2 - pager.hist[0].t > 100) pager.hist.shift();
+  }
+  function mealUp() {
+    var g = pager.drag; pager.drag = null;
+    if (!g) return;
+    meal.lastTouch = Date.now();
+    if (!g.active) { if (!pager.running) goPage(meal.idx, 0, false); return; }
+    var h = pager.hist, v = 0;
+    if (h.length > 1) { var dtm = (h[h.length - 1].t - h[0].t) / 1000; if (dtm > 0) v = (h[h.length - 1].x - h[0].x) / dtm; }
+    /* 살짝만 밀어도 넘김: 손가락이 14px쯤(시작 판정 6px + 8px) 움직였거나 가볍게 튕기면(150px/s) 그 방향으로 한 장 */
+    var moved = pager.x - g.startX, i = g.startIdx;
+    if (moved < -8 || v < -150) i = g.startIdx + 1;
+    else if (moved > 8 || v > 150) i = g.startIdx - 1;
+    i = Math.max(0, Math.min(2, i));
+    goPage(i, v, false);
+  }
+  /* 야간 모드: 시계 숫자를 탭(살짝 끌어도 12px 이내)하면 진입, 아무 곳이나 탭하면 해제 */
+  function bindTap(el, fn) {
+    var sx = 0, sy = 0, moved = false, touched = false;
+    el.addEventListener('touchstart', function (e) { touched = true; var t = e.touches[0]; sx = t.clientX; sy = t.clientY; moved = false; }, false);
+    el.addEventListener('touchmove', function (e) { var t = e.touches[0]; if (Math.abs(t.clientX - sx) > 12 || Math.abs(t.clientY - sy) > 12) moved = true; }, false);
+    el.addEventListener('touchend', function (e) { if (!moved) { if (e.cancelable) e.preventDefault(); fn(); } }, false);
+    el.addEventListener('click', function () { if (touched) { touched = false; return; } fn(); }, false);
+  }
+  function bindNight() {
+    bindTap($('clock'), function () { $('night').className = 'night on'; });
+    bindTap($('night'), function () { $('night').className = 'night'; });
+  }
+  function bindMeal() {
+    var view = $('mealView');
+    view.addEventListener('touchstart', mealDown, false);
+    view.addEventListener('touchmove', mealMove, false);
+    view.addEventListener('touchend', mealUp, false);
+    view.addEventListener('touchcancel', mealUp, false);
+    view.addEventListener('mousedown', function (e) { e.preventDefault(); mealDown(e); }, false);
+    window.addEventListener('mousemove', mealMove, false);
+    window.addEventListener('mouseup', mealUp, false);
+    view.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { meal.lastTouch = Date.now(); goPage(meal.idx + 1, 0, false); }
+      if (e.key === 'ArrowLeft') { meal.lastTouch = Date.now(); goPage(meal.idx - 1, 0, false); }
+    }, false);
+  }
+
+  /* 날씨 */
+  function skyEmoji(sky) {
+    if (/뇌우|천둥/.test(sky)) return '⛈️';
+    if (/눈/.test(sky)) return '🌨️';
+    if (/비|소나기/.test(sky)) return '🌧️';
+    if (/안개/.test(sky)) return '🌫️';
+    if (/구름많/.test(sky)) return '⛅️';
+    if (/흐림/.test(sky)) return '☁️';
+    if (/맑/.test(sky)) return '☀️';
+    return '🌤️';
+  }
+  function renderWeather(w) {
+    $('outTemp').textContent = Math.round(w.temp) + '°';
+    $('outSky').textContent = w.sky + ' · 강수 ' + w.pop + '%';
+    $('outHi').textContent = w.hi != null ? Math.round(w.hi) + '°' : '--';
+    $('outLo').textContent = w.lo != null ? Math.round(w.lo) + '°' : '--';
+  }
+  /* WMO 날씨 코드 → 한국어 (weather.php와 같은 표) */
+  function skyKo(c) {
+    if (c === 0) return '맑음'; if (c === 1) return '대체로 맑음'; if (c === 2) return '구름 조금'; if (c === 3) return '흐림';
+    if (c === 45 || c === 48) return '안개'; if (c >= 51 && c <= 57) return '이슬비'; if (c === 66 || c === 67) return '어는 비';
+    if (c >= 61 && c <= 65) return '비'; if (c >= 71 && c <= 77) return '눈'; if (c >= 80 && c <= 82) return '소나기';
+    if (c === 85 || c === 86) return '소낙눈'; if (c >= 95) return '뇌우'; return '흐림';
+  }
+  /* 예비 경로: 닷홈이 외부 접속을 막으면 브라우저가 Open-Meteo에서 직접 받음 */
+  function weatherDirect(cb) {
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + CONFIG.lat + '&longitude=' + CONFIG.lon +
+      '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=1';
+    xhr('GET', url, null, function (err, text) {
+      if (err) { cb(err); return; }
+      try {
+        var j = JSON.parse(text), c = j.current.weather_code;
+        cb(null, { temp: j.current.temperature_2m, sky: skyKo(c), pop: j.daily.precipitation_probability_max[0] || 0,
+          hi: j.daily.temperature_2m_max[0], lo: j.daily.temperature_2m_min[0] });
+      } catch (e) { cb(e); }
+    });
+  }
+  function loadWeather() {
+    getJSON('/weather.php', function (err, w) {
+      if (!err && w && w.temp != null) { renderWeather(w); return; }
+      weatherDirect(function (err2, w2) {
+        if (err2) { markSample(); renderWeather(SAMPLE.weather); return; }
+        renderWeather(w2);
+      });
+    });
+  }
+
+  /* 네트워크: 애플 실시간 그래프처럼 1초마다 한 칸씩 흘러가며 자잘하게 움직임.
+     숫자는 실제 측정값 그대로, 그래프는 측정값 주변 ±4% 흔들림(시각 효과) */
+  var speeds = [], live = [], LIVE_N = 40, liveBase = 0, liveT0 = 0, liveRun = false;
+  var SW = 157, SBASE = 28, STOP = 3, SDX = SW / (LIVE_N - 2);
+  function liveNext() {
+    var prev = live.length ? live[live.length - 1] : liveBase;
+    var target = liveBase * (1 + (Math.random() - 0.5) * 0.08);
+    return prev + (target - prev) * 0.6;   /* 이전 값에서 부드럽게 이어짐 */
+  }
+  function drawSpark() {
+    var n = live.length, i;
+    if (n < 2) { $('sparkArea').setAttribute('d', ''); $('sparkLine').setAttribute('d', ''); return; }
+    var max = 0, min = Infinity;
+    for (i = 0; i < n; i++) { if (live[i] > max) max = live[i]; if (live[i] < min) min = live[i]; }
+    var mid = (max + min) / 2, span = Math.max(max - min, liveBase * 0.12) || 1;
+    var pts = [];
+    for (i = 0; i < n; i++) pts.push([i * SDX, STOP + (SBASE - STOP) * (0.5 - (live[i] - mid) / span)]);
+    /* 부드러운 곡선: 점 사이 중점을 지나는 2차 베지어 */
+    var d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (i = 1; i < n - 1; i++) {
+      var mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
+      d += 'Q' + pts[i][0].toFixed(1) + ' ' + pts[i][1].toFixed(1) + ' ' + mx.toFixed(1) + ' ' + my.toFixed(1);
+    }
+    d += 'L' + pts[n - 1][0].toFixed(1) + ' ' + pts[n - 1][1].toFixed(1);
+    $('sparkLine').setAttribute('d', d);
+    $('sparkArea').setAttribute('d', d + 'L' + pts[n - 1][0].toFixed(1) + ' 30L0 30Z');
+  }
+  function liveStep(ts) {
+    if (!liveT0) liveT0 = ts;
+    var p = (ts - liveT0) / 1000;
+    if (p >= 1) { live.push(liveNext()); if (live.length > LIVE_N) live.shift(); liveT0 = ts; p = 0; drawSpark(); }
+    var tx = 'translate(' + (-p * SDX).toFixed(2) + 'px,0)', st = $('sparkMove').style;
+    st.webkitTransform = tx; st.transform = tx;
+    requestAnimationFrame(liveStep);
+  }
+  function pushSpeed(mbps) {
+    speeds.push(mbps);
+    if (speeds.length > 30) speeds.shift();
+    $('netVal').textContent = mbps < 10 ? mbps.toFixed(1) : Math.round(mbps);
+    liveBase = mbps;
+    if (!live.length) { for (var k = 0; k < LIVE_N; k++) live.push(liveNext()); }
+    drawSpark();
+    if (!liveRun && !reduceMotion) { liveRun = true; requestAnimationFrame(liveStep); }
+  }
+  function measureSpeed() {
+    if (!CONFIG.api) {
+      if (!speeds.length) { markSample(); speeds = SAMPLE.speeds.slice(0, -1); pushSpeed(SAMPLE.speeds[SAMPLE.speeds.length - 1]); }
+      return;
+    }
+    var t0 = Date.now();
+    xhr('GET', CONFIG.api + '/speed.bin?_=' + t0, null, function (err) {
+      if (err) { $('netVal').textContent = '--'; return; }
+      pushSpeed(CONFIG.speedBytes * 8 / Math.max(0.05, (Date.now() - t0) / 1000) / 1e6);
+    });
+  }
+
+  /* 조명: apple-design 원칙 적용
+     - 즉시 반응: 손이 닿는 순간 줄어들기 시작
+     - 스프링(감쇠비·응답시간): 언제 손을 떼도 현재 크기·속도에서 이어서 복귀(중단 가능)
+     - 실행 순간에만 바운스(감쇠비 0.55) + 위로 튀는 초기 속도
+     - 손가락이 30px 이상 벗어나면 취소 */
+  var lightOn = true, holdTimer = null, toastTimer = null, holdStartAt = 0, startX = 0, startY = 0;
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var HOLD_MS = 700, PRESS_SCALE = 0.88;
+  var spring = { x: 1, v: 0, target: 1, damping: 1, response: 0.3, running: false, last: 0 };
+  function applyScale(x) {
+    var tf = 'scale(' + x.toFixed(4) + ')', st = $('wLight').style;
+    st.webkitTransform = tf; st.transform = tf;
+  }
+  function springTo(target, damping, response, kick) {
+    spring.target = target; spring.damping = damping; spring.response = response;
+    if (kick) spring.v += kick;
+    if (reduceMotion) { spring.x = target; spring.v = 0; applyScale(target); return; }
+    if (!spring.running) { spring.running = true; spring.last = 0; requestAnimationFrame(stepSpring); }
+  }
+  function stepSpring(t) {
+    if (!spring.last) spring.last = t;
+    var dt = Math.min(0.064, (t - spring.last) / 1000); spring.last = t;
+    /* 진행 중 꾹 누르기: 목표가 이즈인 곡선으로 점점 작아짐 */
+    if (holdTimer) {
+      var p = Math.min(1, (Date.now() - holdStartAt) / HOLD_MS);
+      spring.target = 1 - (1 - PRESS_SCALE) * p * p;
+    }
+    var k = Math.pow(2 * Math.PI / spring.response, 2), c = 4 * Math.PI * spring.damping / spring.response;
+    var steps = 4, h = dt / steps;
+    for (var i = 0; i < steps; i++) {
+      var a = -k * (spring.x - spring.target) - c * spring.v;
+      spring.v += a * h; spring.x += spring.v * h;
+    }
+    applyScale(spring.x);
+    if (holdTimer || Math.abs(spring.v) > 0.001 || Math.abs(spring.x - spring.target) > 0.0005) requestAnimationFrame(stepSpring);
+    else { spring.running = false; spring.x = spring.target; applyScale(spring.x); }
+  }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, 2600);
+  }
+  function renderLight() {
+    var b = $('wLight');
+    b.className = 'w' + (lightOn ? '' : ' is-off');
+    b.setAttribute('aria-label', lightOn ? '방 조명 끄기, 길게 누르기' : '방 조명 켜기, 길게 누르기');
+  }
+  function commitLight() {
+    lightOn = !lightOn; renderLight();
+    springTo(1, 0.5, 0.35, 4.5);   /* 통 튀어 커짐 */
+  }
+  function sendLight() {
+    if (!CONFIG.api || !CONFIG.light) { commitLight(); toast('데모 모드 · 실제 스위치에는 보내지 않았어요'); return; }
+    xhr('POST', CONFIG.api + '/command.php', 'cmd=' + (lightOn ? 'light_off' : 'light_on'), function (err) {
+      if (err) { springTo(1, 1, 0.3); toast('불을 바꾸지 못했어요 · 서버 연결을 확인해 주세요'); return; }
+      commitLight();
+      toast(lightOn ? '불을 켰어요' : '불을 껐어요');
+    });
+  }
+  function pointOf(e) { var t = e.touches && e.touches[0] ? e.touches[0] : e; return { x: t.clientX, y: t.clientY }; }
+  function holdStart(e) {
+    if (e.type === 'touchstart') e.preventDefault();
+    if (holdTimer) return;
+    var p = pointOf(e); startX = p.x; startY = p.y;
+    holdStartAt = Date.now();
+    holdTimer = setTimeout(function () { holdTimer = null; sendLight(); }, HOLD_MS);
+    springTo(1, 1, 0.3);   /* 목표는 stepSpring이 누른 시간에 맞춰 갱신 */
+  }
+  function holdCancel(showHint) {
+    if (!holdTimer) return;
+    clearTimeout(holdTimer); holdTimer = null;
+    springTo(1, 1, 0.3);   /* 현재 크기·속도에서 부드럽게 원래대로 */
+    if (showHint) toast('길게 누르면 실행돼요');
+  }
+  function holdMove(e) {
+    if (!holdTimer) return;
+    var p = pointOf(e);
+    if (Math.abs(p.x - startX) > 30 || Math.abs(p.y - startY) > 30) holdCancel(false);
+  }
+  function bindLight() {
+    var b = $('wLight');
+    b.addEventListener('touchstart', holdStart, false);
+    b.addEventListener('touchmove', holdMove, false);
+    b.addEventListener('touchend', function () { holdCancel(true); }, false);
+    b.addEventListener('touchcancel', function () { holdCancel(false); }, false);
+    b.addEventListener('mousedown', holdStart, false);
+    b.addEventListener('mousemove', holdMove, false);
+    b.addEventListener('mouseup', function () { holdCancel(true); }, false);
+    b.addEventListener('mouseleave', function () { holdCancel(false); }, false);
+    b.addEventListener('contextmenu', function (e) { e.preventDefault(); }, false);
+    b.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sendLight(); }
+    }, false);
+  }
+
+  function tick() { var d = now(); renderClock(d); updateMeal(d); }
+  function start() {
+    readSim();
+    fit();
+    initGlass();
+    bindLight();
+    bindMeal();
+    bindNight();
+    renderLight();
+    tick();
+    loadWeather(); measureSpeed();
+    setInterval(tick, 1000);
+    setInterval(loadWeather, CONFIG.weatherEveryMs);
+    setInterval(measureSpeed, CONFIG.speedEveryMs);
+    window.addEventListener('resize', fit, false);
+    window.addEventListener('orientationchange', fit, false);
+    window.addEventListener('hashchange', function () { readSim(); meal.key = ''; tick(); }, false);
+    setInterval(function () { var d = now(); if (d.getHours() === 4 && d.getMinutes() === 0 && d.getSeconds() < 2) location.reload(); }, 1000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, false); else start();
+})();
+</script>
+
+</body>
+</html>
