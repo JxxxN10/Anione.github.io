@@ -1,0 +1,50 @@
+name: 급식 받아오기
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # 30분마다 (날씨 + 급식)
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 날씨 받기 (울산애니원고 부근, Open-Meteo)
+        run: |
+          mkdir -p data
+          curl -sf "https://api.open-meteo.com/v1/forecast?latitude=35.580&longitude=129.306&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=1" -o w.json
+          jq '.current.weather_code as $c |
+            {temp: (.current.temperature_2m|round), code: $c,
+             sky: (if $c==0 then "맑음" elif $c==1 then "대체로 맑음" elif $c==2 then "구름 조금" elif $c==3 then "흐림"
+                   elif ($c==45 or $c==48) then "안개" elif ($c>=51 and $c<=57) then "이슬비" elif ($c==66 or $c==67) then "어는 비"
+                   elif ($c>=61 and $c<=65) then "비" elif ($c>=71 and $c<=77) then "눈" elif ($c>=80 and $c<=82) then "소나기"
+                   elif ($c==85 or $c==86) then "소낙눈" elif $c>=95 then "뇌우" else "흐림" end),
+             pop: (.daily.precipitation_probability_max[0] // 0),
+             hi: (.daily.temperature_2m_max[0]|round), lo: (.daily.temperature_2m_min[0]|round),
+             at: now|floor}' w.json > data/weather.json
+          rm w.json
+      - name: 급식 2주치 받기 (울산애니원고, NEIS)
+        env:
+          NEIS_KEY: ${{ secrets.NEIS_KEY }}
+        run: |
+          FROM=$(TZ=Asia/Seoul date +%Y%m%d)
+          TO=$(TZ=Asia/Seoul date -d '+14 days' +%Y%m%d)
+          URL="https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${NEIS_KEY}&Type=json&pIndex=1&pSize=100&ATPT_OFCDC_SC_CODE=H10&SD_SCHUL_CODE=7480087&MLSV_FROM_YMD=${FROM}&MLSV_TO_YMD=${TO}"
+          curl -sf "$URL" -o raw.json
+          if jq -e '.mealServiceDietInfo' raw.json > /dev/null; then
+            jq --arg u "$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')" '{updated:$u, rows:[.mealServiceDietInfo[1].row[] | {MLSV_YMD, MMEAL_SC_CODE, DDISH_NM, CAL_INFO}]}' raw.json > data/meals.json
+          elif jq -e '.RESULT.CODE == "INFO-200"' raw.json > /dev/null; then
+            jq -n --arg u "$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')" '{updated:$u, rows:[]}' > data/meals.json
+          else
+            cat raw.json; exit 1
+          fi
+          rm raw.json
+      - name: 저장
+        run: |
+          git config user.name "data-bot"
+          git config user.email "data-bot@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "날씨·급식 업데이트"
+          git pull --rebase
+          git push

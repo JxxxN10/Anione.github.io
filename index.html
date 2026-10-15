@@ -273,6 +273,8 @@ body {
        POST {api}/command.php  cmd=light_off|light_on */
   var CONFIG = {
     api: 'api',      /* 닷홈 html/api 폴더의 PHP (같은 사이트라 상대 주소) */
+    mealsFile: 'data/meals.json',
+    weatherFile: 'data/weather.json',   /* GitHub Actions가 30분마다 받아두는 날씨 */   /* GitHub Pages: GitHub Actions가 매일 받아두는 급식 파일. 없으면 api/meal.php 사용 */
     light: false,    /* ESP32 조명 연결 전까지 false: 길게 누르면 데모 안내만 */
     lat: 35.580, lon: 129.306,   /* 울산애니원고 부근: PHP가 막힐 때 브라우저가 직접 날씨를 받는 예비 경로용 */
     gradAt: { y: 2027, m: 2, d: 16 },   /* 졸업일: 화면에 남은 날을 -123처럼 표시 */
@@ -654,6 +656,23 @@ body {
     for (var i = 0; i < 3; i++) dots[i].className = i === meal.idx ? 'on' : '';
   }
   function loadMealDay(ymd) {
+    if (CONFIG.mealsFile) {
+      xhr('GET', CONFIG.mealsFile + '?_=' + Date.now(), null, function (err, text) {
+        if (ymd !== meal.ymd) return;
+        var rows = null;
+        if (!err) { try { rows = JSON.parse(text).rows; } catch (e) { rows = null; } }
+        if (!rows) { loadMealDayApi(ymd); return; }
+        for (var c = 1; c <= 3; c++) {
+          var hit = null;
+          for (var k = 0; k < rows.length; k++) if (rows[k].MLSV_YMD === ymd && +rows[k].MMEAL_SC_CODE === c) { hit = rows[k]; break; }
+          renderMenu(c - 1, hit ? mk(parseDishes(hit.DDISH_NM), hit.CAL_INFO) : null);
+        }
+      });
+      return;
+    }
+    loadMealDayApi(ymd);
+  }
+  function loadMealDayApi(ymd) {
     for (var c = 1; c <= 3; c++) (function (code) {
       getJSON('/meal.php?ymd=' + ymd + '&code=' + code, function (err, json) {
         if (ymd !== meal.ymd) return;
@@ -800,6 +819,16 @@ body {
     });
   }
   function loadWeather() {
+    if (!CONFIG.weatherFile) { loadWeatherApi(); return; }
+    xhr('GET', CONFIG.weatherFile + '?_=' + Date.now(), null, function (err, text) {
+      var w = null;
+      if (!err) { try { w = JSON.parse(text); } catch (e) { w = null; } }
+      /* 3시간 넘게 갱신 안 된 파일은 버리고 다른 경로로 */
+      if (w && w.temp != null && w.at && Date.now() - w.at * 1000 < 3 * 3600 * 1000) { renderWeather(w); return; }
+      loadWeatherApi();
+    });
+  }
+  function loadWeatherApi() {
     getJSON('/weather.php', function (err, w) {
       if (!err && w && w.temp != null) { renderWeather(w); return; }
       weatherDirect(function (err2, w2) {
